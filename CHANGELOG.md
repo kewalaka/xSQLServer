@@ -5,6 +5,7 @@
 - Changes to xSQLServerRSConfig
   - BREAKING CHANGE: removed $SQLAdminCredential parameter. Use common parameter PsDscRunAsCredential (WMF 5.0+) to run the resource under different credentials. PsDscRunAsCredential Windows account must be a sysadmin on SQL Server (issue #568).
   - Fixed virtual directory creation for SQL Server 2016.
+  - Added unit tests (issue #295).
 
 ## 7.1.0.0
 
