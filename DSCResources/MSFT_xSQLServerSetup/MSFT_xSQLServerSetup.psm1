@@ -63,7 +63,7 @@ function Get-TargetResource
         $FailoverClusterNetworkName
     )
 
-    if ($Action -in @('CompleteFailoverCluster','InstallFailoverCluster'))
+    if ($Action -in @('CompleteFailoverCluster','InstallFailoverCluster','Addnode'))
     {
         $sqlHostName = $FailoverClusterNetworkName
     }
@@ -145,6 +145,45 @@ function Get-TargetResource
             New-VerboseMessage -Message 'Replication feature not detected'
         }
 
+        # Check if Data Quality Client sub component is configured
+        New-VerboseMessage -Message "Detecting Data Quality Client (HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\$($sqlVersion)0\ConfigurationState)"
+        $isDQCInstalled = (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\$($sqlVersion)0\ConfigurationState").SQL_DQ_CLIENT_Full
+        if ($isDQCInstalled -eq 1)
+        {
+            New-VerboseMessage -Message 'Data Quality Client feature detected'
+            $features += 'DQC,'
+        }
+        else
+        {
+            New-VerboseMessage -Message 'Data Quality Client feature not detected'
+        }
+
+        # Check if Data Quality Services sub component is configured
+        New-VerboseMessage -Message "Detecting Data Quality Services (HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\$($sqlVersion)0\DQ\*)"
+        $isDQInstalled = (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\$($sqlVersion)0\DQ\*" -ErrorAction SilentlyContinue)
+        if ($isDQInstalled)
+        {
+            New-VerboseMessage -Message 'Data Quality Services feature detected'
+            $features += 'DQ,'
+        }
+        else
+        {
+            New-VerboseMessage -Message 'Data Quality Services feature not detected'
+        }
+
+        # Check if Documentation Components "BOL" is configured
+        New-VerboseMessage -Message "Detecting Documentation Components (HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\$($sqlVersion)0\ConfigurationState)"
+        $isBOLInstalled = (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\$($sqlVersion)0\ConfigurationState").SQL_BOL_Components
+        if ($isBOLInstalled -eq 1)
+        {
+            New-VerboseMessage -Message 'Documentation Components feature detected'
+            $features += 'BOL,'
+        }
+        else
+        {
+            New-VerboseMessage -Message 'Documentation Components feature not detected'
+        }
+
         $clientComponentsFullRegistryPath = "HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\$($sqlVersion)0\Tools\Setup\Client_Components_Full"
         $registryClientComponentsFullFeatureList = (Get-ItemProperty -Path $clientComponentsFullRegistryPath -ErrorAction SilentlyContinue).FeatureList
 
@@ -168,6 +207,17 @@ function Get-TargetResource
         else
         {
             New-VerboseMessage -Message 'Client Connectivity Tools Backwards Compatibility feature not detected'
+        }
+
+        Write-Debug -Message "Detecting Client Tools SDK feature ($clientComponentsFullRegistryPath)"
+        if (($registryClientComponentsFullFeatureList -like '*SDK_Full=3*') -and ($registryClientComponentsFullFeatureList -like '*SDK_FNS=3*'))
+        {
+            New-VerboseMessage -Message 'Client Tools SDK feature detected'
+            $features += 'SDK,'
+        }
+        else
+        {
+            New-VerboseMessage -Message 'Client Tools SDK feature not detected'
         }
 
         $instanceId = $fullInstanceId.Split('.')[1]
@@ -345,7 +395,7 @@ function Get-TargetResource
                 $registryKeySharedWOWDir = 'C90BFAC020D87EA46811C836AD3C507F'
             }
 
-            '13'
+            { $_ -in ('13','14') }
             {
                 $registryKeySharedDir = 'FEE2E540D20152D4597229B6CFBC0A69'
                 $registryKeySharedWOWDir = 'A79497A344129F64CA7D69C56F5DD8B4'
@@ -742,6 +792,9 @@ function Set-TargetResource
     $InstanceName = $InstanceName.ToUpper()
 
     $parametersToEvaluateTrailingSlash = @(
+        'InstanceDir',
+        'InstallSharedDir',
+        'InstallSharedWOWDir',
         'InstallSQLDataDir',
         'SQLUserDBDir',
         'SQLUserDBLogDir',
@@ -761,9 +814,17 @@ function Set-TargetResource
         if ($PSBoundParameters.ContainsKey($parameterName))
         {
             $parameterValue = Get-Variable -Name $parameterName -ValueOnly
-            if ($parameterValue)
+
+            # Trim backslash, but only if the path contains a full path and not just a qualifier.
+            if ($parameterValue -and $parameterValue -notmatch '^[a-zA-Z]:\\$')
             {
                 Set-Variable -Name $parameterName -Value $parameterValue.TrimEnd('\')
+            }
+
+            # If the path only contains a qualifier but no backslash ('M:'), then a backslash is added ('M:\').
+            if ($parameterValue -match '^[a-zA-Z]:$')
+            {
+                Set-Variable -Name $parameterName -Value "$parameterValue\"
             }
         }
     }
@@ -810,12 +871,12 @@ function Set-TargetResource
         # Given that all the returned features are uppercase, make sure that the feature to search for is also uppercase
         $feature = $feature.ToUpper();
 
-        if (($sqlVersion -eq '13') -and (($feature -eq 'SSMS') -or ($feature -eq 'ADV_SSMS')))
+        if (($sqlVersion -in ('13','14')) -and ($feature -in ('ADV_SSMS','SSMS')))
         {
             Throw New-TerminatingError -ErrorType FeatureNotSupported -FormatArgs @($feature) -ErrorCategory InvalidData
         }
 
-        if (!($getTargetResourceResult.Features.Contains($feature)))
+        if (-not ($getTargetResourceResult.Features.Contains($feature)))
         {
             $featuresToInstall += "$feature,"
         }
@@ -832,6 +893,7 @@ function Set-TargetResource
             {
                 Set-Variable -Name 'InstallSharedDir' -Value ''
             }
+
             if((Get-Variable -Name 'InstallSharedWOWDir' -ErrorAction SilentlyContinue) -and (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Installer\UserData\S-1-5-18\Components\C90BFAC020D87EA46811C836AD3C507F' -ErrorAction SilentlyContinue))
             {
                 Set-Variable -Name 'InstallSharedWOWDir' -Value ''
@@ -844,6 +906,7 @@ function Set-TargetResource
             {
                 Set-Variable -Name 'InstallSharedDir' -Value ''
             }
+
             if((Get-Variable -Name 'InstallSharedWOWDir' -ErrorAction SilentlyContinue) -and (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Installer\UserData\S-1-5-18\Components\A79497A344129F64CA7D69C56F5DD8B4' -ErrorAction SilentlyContinue))
             {
                 Set-Variable -Name 'InstallSharedWOWDir' -Value ''
@@ -856,18 +919,20 @@ function Set-TargetResource
             {
                 Set-Variable -Name 'InstallSharedDir' -Value ''
             }
+
             if((Get-Variable -Name 'InstallSharedWOWDir' -ErrorAction SilentlyContinue) -and (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Installer\UserData\S-1-5-18\Components\C90BFAC020D87EA46811C836AD3C507F' -ErrorAction SilentlyContinue))
             {
                 Set-Variable -Name 'InstallSharedWOWDir' -Value ''
             }
         }
 
-        '13'
+        { $_ -in ('13','14') }
         {
             if((Get-Variable -Name 'InstallSharedDir' -ErrorAction SilentlyContinue) -and (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Installer\UserData\S-1-5-18\Components\FEE2E540D20152D4597229B6CFBC0A69' -ErrorAction SilentlyContinue))
             {
                 Set-Variable -Name 'InstallSharedDir' -Value ''
             }
+
             if((Get-Variable -Name 'InstallSharedWOWDir' -ErrorAction SilentlyContinue) -and (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Installer\UserData\S-1-5-18\Components\A79497A344129F64CA7D69C56F5DD8B4' -ErrorAction SilentlyContinue))
             {
                 Set-Variable -Name 'InstallSharedWOWDir' -Value ''
@@ -877,22 +942,23 @@ function Set-TargetResource
 
     $setupArguments = @{}
 
-    if ($Action -in @('PrepareFailoverCluster','CompleteFailoverCluster','InstallFailoverCluster'))
+    if ($Action -in @('PrepareFailoverCluster','CompleteFailoverCluster','InstallFailoverCluster','Addnode'))
     {
-        # Set the group name for this clustered instance.
+        # This was brought over from the old module. Should be removed (breaking change).
         $setupArguments += @{
-            FailoverClusterGroup = $FailoverClusterGroupName
-
-            # This was brought over from the old module. Should be removed (breaking change).
             SkipRules = 'Cluster_VerifyForErrors'
         }
     }
 
-    # Add the failover cluster network name if the action is either installing or completing a cluster
+    <#
+        Set the failover cluster group name and failover cluster network name for this clustered instance
+        if the action is either installing (InstallFailoverCluster) or completing (CompleteFailoverCluster) a cluster.
+    #>
     if ($Action -in @('CompleteFailoverCluster','InstallFailoverCluster'))
     {
         $setupArguments += @{
             FailoverClusterNetworkName = $FailoverClusterNetworkName
+            FailoverClusterGroup = $FailoverClusterGroupName
         }
     }
 
@@ -936,7 +1002,7 @@ function Set-TargetResource
         # Get the disk resources that are available (not assigned to a cluster role)
         $availableStorage = Get-CimInstance -Namespace 'root/MSCluster' -ClassName 'MSCluster_ResourceGroup' -Filter "Name = 'Available Storage'" |
                                 Get-CimAssociatedInstance -Association MSCluster_ResourceGroupToResource -ResultClassName MSCluster_Resource | `
-                                Add-Member -MemberType NoteProperty -Name 'IsPossibleOwner' -Value $false -PassThru
+                                    Add-Member -MemberType NoteProperty -Name 'IsPossibleOwner' -Value $false -PassThru
 
         # First map regular cluster volumes
         foreach ($diskResource in $availableStorage)
@@ -1068,45 +1134,28 @@ function Set-TargetResource
         'InstanceID',
         'UpdateEnabled',
         'UpdateSource',
-        'Features',
         'ProductKey',
         'SQMReporting',
-        'ErrorReporting',
-        'InstallSharedDir',
-        'InstallSharedWOWDir',
-        'InstanceDir'
+        'ErrorReporting'
     )
+
+    if ($Action -in @('Install','InstallFailoverCluster','PrepareFailoverCluster','CompleteFailoverCluster'))
+    {
+        $argumentVars += @(
+            'Features',
+            'InstallSharedDir',
+            'InstallSharedWOWDir',
+            'InstanceDir'
+        )
+    }
 
     if ($null -ne $BrowserSvcStartupType)
     {
         $argumentVars += 'BrowserSvcStartupType'
     }
 
-    if ($Action -eq 'AddNode')
-    {
-        if ($PSBoundParameters.ContainsKey('SQLSvcAccount'))
-        {
-            $setupArguments += (Get-ServiceAccountParameters -ServiceAccount $SQLSvcAccount -ServiceType 'SQL')
-        }
-
-        if($PSBoundParameters.ContainsKey('AgtSvcAccount'))
-        {
-            $setupArguments += (Get-ServiceAccountParameters -ServiceAccount $AgtSvcAccount -ServiceType 'AGT')
-        }
-    }
-
     if ($Features.Contains('SQLENGINE'))
     {
-        $argumentVars += @(
-            'SecurityMode',
-            'SQLCollation',
-            'InstallSQLDataDir',
-            'SQLUserDBDir',
-            'SQLUserDBLogDir',
-            'SQLTempDBDir',
-            'SQLTempDBLogDir',
-            'SQLBackupDir'
-        )
 
         if ($PSBoundParameters.ContainsKey('SQLSvcAccount'))
         {
@@ -1116,12 +1165,6 @@ function Set-TargetResource
         if($PSBoundParameters.ContainsKey('AgtSvcAccount'))
         {
             $setupArguments += (Get-ServiceAccountParameters -ServiceAccount $AgtSvcAccount -ServiceType 'AGT')
-        }
-
-        $setupArguments += @{ SQLSysAdminAccounts =  @($SetupCredential.UserName) }
-        if ($PSBoundParameters.ContainsKey('SQLSysAdminAccounts'))
-        {
-            $setupArguments['SQLSysAdminAccounts'] += $SQLSysAdminAccounts
         }
 
         if ($SecurityMode -eq 'SQL')
@@ -1129,7 +1172,28 @@ function Set-TargetResource
             $setupArguments += @{ SAPwd = $SAPwd.GetNetworkCredential().Password }
         }
 
-        if ($Action -notin @('PrepareFailoverCluster','CompleteFailoverCluster','InstallFailoverCluster','AddNode'))
+        # Should not be passed when PrepareFailoverCluster is specified
+        if ($Action -in @('Install','InstallFailoverCluster','CompleteFailoverCluster'))
+        {
+            $setupArguments += @{ SQLSysAdminAccounts =  @($SetupCredential.UserName) }
+            if ($PSBoundParameters.ContainsKey('SQLSysAdminAccounts'))
+            {
+                $setupArguments['SQLSysAdminAccounts'] += $SQLSysAdminAccounts
+            }
+
+            $argumentVars += @(
+                'SecurityMode',
+                'SQLCollation',
+                'InstallSQLDataDir',
+                'SQLUserDBDir',
+                'SQLUserDBLogDir',
+                'SQLTempDBDir',
+                'SQLTempDBLogDir',
+                'SQLBackupDir'
+            )
+        }
+
+        if ($Action -in @('Install'))
         {
             $setupArguments += @{ AgtSvcStartupType = 'Automatic' }
         }
@@ -1167,11 +1231,14 @@ function Set-TargetResource
             $setupArguments += (Get-ServiceAccountParameters -ServiceAccount $ASSvcAccount -ServiceType 'AS')
         }
 
-        $setupArguments += @{ ASSysAdminAccounts = @($SetupCredential.UserName) }
-
-        if($PSBoundParameters.ContainsKey("ASSysAdminAccounts"))
+        if ($Action -in ('Install','InstallFailoverCluster','CompleteFailoverCluster'))
         {
-            $setupArguments['ASSysAdminAccounts'] += $ASSysAdminAccounts
+            $setupArguments += @{ ASSysAdminAccounts = @($SetupCredential.UserName) }
+
+            if($PSBoundParameters.ContainsKey("ASSysAdminAccounts"))
+            {
+                $setupArguments['ASSysAdminAccounts'] += $ASSysAdminAccounts
+            }
         }
     }
 
@@ -1264,14 +1331,16 @@ function Set-TargetResource
     {
         $processArguments.Add('Credential',$SetupCredential)
     }
+
     $process = StartWin32Process @processArguments
 
     New-VerboseMessage -Message $process
+
     WaitForWin32ProcessEnd -Path $pathToSetupExecutable -Arguments $arguments
 
     if ($ForceReboot -or ($null -ne (Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager' -Name 'PendingFileRenameOperations' -ErrorAction SilentlyContinue)))
     {
-        if (!($SuppressReboot))
+        if (-not ($SuppressReboot))
         {
             $global:DSCMachineStatus = 1
         }
@@ -1281,7 +1350,7 @@ function Set-TargetResource
         }
     }
 
-    if (!(Test-TargetResource @PSBoundParameters))
+    if (-not (Test-TargetResource @PSBoundParameters))
     {
         throw New-TerminatingError -ErrorType TestFailedAfterSet -ErrorCategory InvalidResult
     }
@@ -1629,11 +1698,10 @@ function Test-TargetResource
     $getTargetResourceResult = Get-TargetResource @getTargetResourceParameters
     New-VerboseMessage -Message "Features found: '$($getTargetResourceResult.Features)'"
 
-    $result = $false
+    $result = $true
+
     if ($getTargetResourceResult.Features )
     {
-        $result = $true
-
         foreach ($feature in $Features.Split(","))
         {
             # Given that all the returned features are uppercase, make sure that the feature to search for is also uppercase
@@ -1646,12 +1714,14 @@ function Test-TargetResource
             }
         }
     }
+    else
+    {
+        $result = $false
+    }
 
     if ($PSCmdlet.ParameterSetName -eq 'ClusterInstall')
     {
         New-VerboseMessage -Message "Clustered install, checking parameters."
-
-        $result = $true
 
         $boundParameters.Keys | Where-Object {$_ -imatch "^FailoverCluster"} | ForEach-Object {
             $variableName = $_
@@ -1663,7 +1733,7 @@ function Test-TargetResource
         }
     }
 
-    $result
+    return $result
 }
 
 <#

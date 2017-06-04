@@ -240,7 +240,7 @@ function Set-TargetResource
                     }
                     catch
                     {
-                        throw New-TerminatingError -ErrorType RemoveAvailabilityGroupFailed -FormatArgs $availabilityGroup.Name,$SQLInstanceName -ErrorCategory ResourceUnavailable
+                        throw New-TerminatingError -ErrorType RemoveAvailabilityGroupFailed -FormatArgs $availabilityGroup.Name,$SQLInstanceName -ErrorCategory ResourceUnavailable -InnerException $_.Exception
                     }
                 }
                 else
@@ -254,55 +254,55 @@ function Set-TargetResource
         {
             $clusterServiceName = 'NT SERVICE\ClusSvc'
             $ntAuthoritySystemName = 'NT AUTHORITY\SYSTEM'
-            $availabilityGroupManagementRoleName = 'AG_Management'
             $availabilityGroupManagementPerms = @('Connect SQL','Alter Any Availability Group','View Server State')
             $clusterPermissionsPresent = $false
 
-            $permissionsParams = @{
-                SQLServer = $SQLServer
-                SQLInstanceName = $SQLInstanceName
-                Database = 'master'
-                WithResults = $true
-            }
-
             foreach ( $loginName in @( $clusterServiceName, $ntAuthoritySystemName ) )
             {
-                if ( $serverObject.Logins[$loginName] -and -not $clusterPermissionsPresent )
+                if ( $serverObject.Logins[$loginName] )
                 {
-                    $queryToGetEffectivePermissionsForLogin = "
-                        EXECUTE AS LOGIN = '$loginName'
-                        SELECT DISTINCT permission_name
-                        FROM fn_my_permissions(null,'SERVER')
-                        REVERT
-                    "
-
-                    $loginEffectivePermissionsResult = Invoke-Query @permissionsParams -Query $queryToGetEffectivePermissionsForLogin
-                    $loginEffectivePermissions = $loginEffectivePermissionsResult.Tables.Rows.permission_name
-
-                    if ( $null -ne $loginEffectivePermissions )
+                    $testLoginEffectivePermissionsParams = @{
+                        SQLServer = $SQLServer
+                        SQLInstanceName = $SQLInstanceName
+                        LoginName = $loginName
+                        Permissions = $availabilityGroupManagementPerms
+                    }
+                    
+                    $clusterPermissionsPresent = Test-LoginEffectivePermissions @testLoginEffectivePermissionsParams
+                    
+                    if ( $clusterPermissionsPresent )
                     {
-                        $loginMissingPermissions = Compare-Object -ReferenceObject $availabilityGroupManagementPerms -DifferenceObject $loginEffectivePermissions | 
-                            Where-Object { $_.SideIndicator -ne '=>' } |
-                            Select-Object -ExpandProperty InputObject 
-                        
-                        if ( $loginMissingPermissions.Count -eq 0 )
+                        # Exit the loop when the script verifies the required cluster permissions are present
+                        break
+                    }
+                    else
+                    {
+                        switch ( $loginName )
                         {
-                            $clusterPermissionsPresent = $true
-                        }
-                        else
-                        {
-                            switch ( $loginName )
+                            $clusterServiceName
                             {
-                                $clusterServiceName
-                                {
-                                    New-VerboseMessage -Message "The recommended account '$loginName' is missing the following permissions: $( $loginMissingPermissions -join ', ' ). Trying with '$ntAuthoritySystemName'."
-                                }
-
-                                $ntAuthoritySystemName
-                                {
-                                    New-VerboseMessage -Message "'$loginName' is missing the following permissions: $( $loginMissingPermissions -join ', ' )"
-                                }
+                                New-VerboseMessage -Message "The recommended account '$loginName' is missing one or more of the following permissions: $( $availabilityGroupManagementPerms -join ', ' ). Trying with '$ntAuthoritySystemName'."
                             }
+
+                            $ntAuthoritySystemName
+                            {
+                                New-VerboseMessage -Message "'$loginName' is missing one or more of the following permissions: $( $availabilityGroupManagementPerms -join ', ' )"
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    switch ( $loginName )
+                    {
+                        $clusterServiceName
+                        {
+                            New-VerboseMessage -Message "The recommended login '$loginName' is not present. Trying with '$ntAuthoritySystemName'."
+                        }
+
+                        $ntAuthoritySystemName
+                        {
+                            New-VerboseMessage -Message "The login '$loginName' is not present."
                         }
                     }
                 }
@@ -361,7 +361,7 @@ function Set-TargetResource
                 }
                 catch
                 {
-                    throw New-TerminatingError -ErrorType CreateAvailabilityGroupReplicaFailed -FormatArgs $Ensure,$SQLInstanceName -ErrorCategory OperationStopped
+                    throw New-TerminatingError -ErrorType CreateAvailabilityGroupReplicaFailed -FormatArgs $newReplicaParams.Name,$SQLInstanceName -ErrorCategory OperationStopped -InnerException $_.Exception
                 }
 
                 # Set up the parameters for the new availability group
@@ -398,7 +398,7 @@ function Set-TargetResource
                 }
                 catch
                 {
-                    throw New-TerminatingError -ErrorType CreateAvailabilityGroupFailed -FormatArgs $Name,$_.Exception -ErrorCategory OperationStopped
+                    throw New-TerminatingError -ErrorType CreateAvailabilityGroupFailed -FormatArgs $Name -ErrorCategory OperationStopped -InnerException $_.Exception
                 }
             }
             # Otherwise let's check each of the parameters passed and update the Availability Group accordingly
@@ -747,39 +747,7 @@ function Update-AvailabilityGroup
     }
     catch
     {
-        throw New-TerminatingError -ErrorType AlterAvailabilityGroupFailed -FormatArgs $AvailabilityGroup.Name -ErrorCategory OperationStopped
-    }
-    finally
-    {
-        $ErrorActionPreference = $originalErrorActionPreference
-    }
-}
-
-<#
-    .SYNOPSIS
-        Executes the alter method on an Availability Group Replica object.
-    
-    .PARAMETER AvailabilityGroupReplica
-        The Availabilty Group Replica object that must be altered.
-#>
-function Update-AvailabilityGroupReplica
-{
-    param
-    (
-        [Parameter(Mandatory = $true)]
-        [Microsoft.SqlServer.Management.Smo.AvailabilityReplica]
-        $AvailabilityGroupReplica
-    )
-
-    try
-    {
-        $originalErrorActionPreference = $ErrorActionPreference
-        $ErrorActionPreference = 'Stop'
-        $AvailabilityGroupReplica.Alter()
-    }
-    catch
-    {
-        throw New-TerminatingError -ErrorType AlterAvailabilityGroupReplicaFailed -FormatArgs $AvailabilityGroupReplica.Name -ErrorCategory OperationStopped
+        throw New-TerminatingError -ErrorType AlterAvailabilityGroupFailed -FormatArgs $AvailabilityGroup.Name -ErrorCategory OperationStopped -InnerException $_.Exception
     }
     finally
     {

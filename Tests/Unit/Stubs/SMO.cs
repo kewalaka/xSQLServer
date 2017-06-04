@@ -18,10 +18,10 @@ namespace Microsoft.SqlServer.Management.Smo
         IsHashed = 1,
         MustChange = 2
     }
-    
+
     // TypeName: Microsoft.SqlServer.Management.Smo.LoginType
     // BaseType: Microsoft.SqlServer.Management.Smo.ScriptNameObjectBase
-    // Used by: 
+    // Used by:
     //  MSFT_xSQLServerLogin
     public enum LoginType
     {
@@ -32,11 +32,11 @@ namespace Microsoft.SqlServer.Management.Smo
         SqlLogin = 2,
         WindowsGroup = 1,
         WindowsUser = 0,
-        Unknown = -1    // Added for verification (mock) purposes, to verify that a login type is passed  
+        Unknown = -1    // Added for verification (mock) purposes, to verify that a login type is passed
     }
-    
+
     // TypeName: Microsoft.SqlServer.Management.Smo.AvailabilityReplicaFailoverMode
-    // Used by: 
+    // Used by:
     //  MSFT_xSQLAOGroupEnsure.Tests
     public enum AvailabilityReplicaFailoverMode
     {
@@ -46,13 +46,69 @@ namespace Microsoft.SqlServer.Management.Smo
     }
 
     // TypeName: Microsoft.SqlServer.Management.Smo.AvailabilityReplicaAvailabilityMode
-    // Used by: 
+    // Used by:
     //  MSFT_xSQLAOGroupEnsure.Tests
     public enum AvailabilityReplicaAvailabilityMode
     {
         AsynchronousCommit,
         SynchronousCommit,
         Unknown
+    }
+
+    // TypeName: Microsoft.SqlServer.Management.Smo.EndpointType
+    // Used by:
+    //  xSQLServerEndpoint
+    public enum EndpointType
+    {
+        DatabaseMirroring,
+        ServiceBroker,
+        Soap,
+        TSql
+    }
+
+    // TypeName: Microsoft.SqlServer.Management.Smo.ProtocolType
+    // Used by:
+    //  xSQLServerEndpoint
+    public enum ProtocolType
+    {
+        Http,
+        NamedPipes,
+        SharedMemory,
+        Tcp,
+        Via
+    }
+
+    // TypeName: Microsoft.SqlServer.Management.Smo.ServerMirroringRole
+    // Used by:
+    //  xSQLServerEndpoint
+    public enum ServerMirroringRole
+    {
+        All,
+        None,
+        Partner,
+        Witness
+    }
+
+    // TypeName: Microsoft.SqlServer.Management.Smo.EndpointEncryption
+    // Used by:
+    //  xSQLServerEndpoint
+    public enum EndpointEncryption
+    {
+        Disabled,
+        Required,
+        Supported
+    }
+
+    // TypeName: Microsoft.SqlServer.Management.Smo.EndpointEncryptionAlgorithm
+    // Used by:
+    //  xSQLServerEndpoint
+    public enum EndpointEncryptionAlgorithm
+    {
+        Aes,
+        AesRC4,
+        None,
+        RC4,
+        RC4Aes
     }
 
     #endregion Public Enums
@@ -67,52 +123,52 @@ namespace Microsoft.SqlServer.Management.Smo
 
     // Typename: Microsoft.SqlServer.Management.Smo.ObjectPermissionSet
     // BaseType: Microsoft.SqlServer.Management.Smo.PermissionSetBase
-    // Used by: 
+    // Used by:
     //  xSQLServerEndpointPermission.Tests.ps1
-    public class ObjectPermissionSet 
+    public class ObjectPermissionSet
     {
         public ObjectPermissionSet(){}
 
         public ObjectPermissionSet(
             bool connect )
         {
-            this.Connect = connect; 
-        } 
-    
+            this.Connect = connect;
+        }
+
         public bool Connect = false;
     }
-    
+
     // TypeName: Microsoft.SqlServer.Management.Smo.ServerPermissionSet
     // BaseType: Microsoft.SqlServer.Management.Smo.PermissionSetBase
-    // Used by: 
+    // Used by:
     //  xSQLServerPermission.Tests.ps1
-    public class ServerPermissionSet 
+    public class ServerPermissionSet
     {
         public ServerPermissionSet(){}
 
         public ServerPermissionSet(
-            bool alterAnyAvailabilityGroup, 
-            bool alterAnyEndPoint,
-            bool connectSql,  
+            bool alterAnyAvailabilityGroup,
+            bool alterAnyEndpoint,
+            bool connectSql,
             bool viewServerState )
         {
-            this.AlterAnyAvailabilityGroup = alterAnyAvailabilityGroup; 
-            this.AlterAnyEndPoint = alterAnyEndPoint;
+            this.AlterAnyAvailabilityGroup = alterAnyAvailabilityGroup;
+            this.AlterAnyEndpoint = alterAnyEndpoint;
             this.ConnectSql = connectSql;
             this.ViewServerState = viewServerState;
-        } 
-    
+        }
+
         public bool AlterAnyAvailabilityGroup = false;
-        public bool AlterAnyEndPoint = false;
+        public bool AlterAnyEndpoint = false;
         public bool ConnectSql = false;
         public bool ViewServerState = false;
     }
 
     // TypeName: Microsoft.SqlServer.Management.Smo.ServerPermissionInfo
     // BaseType: Microsoft.SqlServer.Management.Smo.PermissionInfo
-    // Used by: 
+    // Used by:
     //  xSQLServerPermission.Tests.ps1
-    public class ServerPermissionInfo 
+    public class ServerPermissionInfo
     {
         public ServerPermissionInfo()
         {
@@ -120,39 +176,39 @@ namespace Microsoft.SqlServer.Management.Smo
             this.PermissionType = permissionSet;
         }
 
-        public ServerPermissionInfo( 
+        public ServerPermissionInfo(
             Microsoft.SqlServer.Management.Smo.ServerPermissionSet[] permissionSet )
         {
             this.PermissionType = permissionSet;
         }
-        
+
         public Microsoft.SqlServer.Management.Smo.ServerPermissionSet[] PermissionType;
         public string PermissionState = "Grant";
     }
 
     // TypeName: Microsoft.SqlServer.Management.Smo.DatabasePermissionSet
     // BaseType: Microsoft.SqlServer.Management.Smo.PermissionSetBase
-    // Used by: 
+    // Used by:
     //  xSQLServerDatabasePermission.Tests.ps1
-    public class DatabasePermissionSet 
+    public class DatabasePermissionSet
     {
         public DatabasePermissionSet(){}
 
         public DatabasePermissionSet( bool connect, bool update )
         {
-            this.Connect = connect; 
+            this.Connect = connect;
             this.Update = update;
-        } 
-    
+        }
+
         public bool Connect = false;
         public bool Update = false;
     }
 
     // TypeName: Microsoft.SqlServer.Management.Smo.DatabasePermissionInfo
     // BaseType: Microsoft.SqlServer.Management.Smo.PermissionInfo
-    // Used by: 
+    // Used by:
     //  xSQLServerDatabasePermission.Tests.ps1
-    public class DatabasePermissionInfo 
+    public class DatabasePermissionInfo
     {
         public DatabasePermissionInfo()
         {
@@ -164,18 +220,18 @@ namespace Microsoft.SqlServer.Management.Smo
         {
             this.PermissionType = permissionSet;
         }
-        
+
         public Microsoft.SqlServer.Management.Smo.DatabasePermissionSet[] PermissionType;
         public string PermissionState = "Grant";
     }
 
     // TypeName: Microsoft.SqlServer.Management.Smo.Server
     // BaseType: Microsoft.SqlServer.Management.Smo.SqlSmoObject
-    // Used by: 
+    // Used by:
     //  xSQLServerPermission
     //  MSFT_xSQLServerLogin
-    public class Server 
-    { 
+    public class Server
+    {
         public string MockGranteeName;
 
         public string Name;
@@ -185,32 +241,39 @@ namespace Microsoft.SqlServer.Management.Smo
         public bool IsClustered = false;
         public bool IsHadrEnabled = false;
 
-        public Server(){} 
+        public Server(){}
 
-        public Microsoft.SqlServer.Management.Smo.ServerPermissionInfo[] EnumServerPermissions( string principal, Microsoft.SqlServer.Management.Smo.ServerPermissionSet permissionSetQuery ) 
-        { 
-            List<Microsoft.SqlServer.Management.Smo.ServerPermissionInfo> listOfServerPermissionInfo = new List<Microsoft.SqlServer.Management.Smo.ServerPermissionInfo>();
-            
+        public Microsoft.SqlServer.Management.Smo.ServerPermissionInfo[] EnumServerPermissions( string principal, Microsoft.SqlServer.Management.Smo.ServerPermissionSet permissionSetQuery )
+        {
+            Microsoft.SqlServer.Management.Smo.ServerPermissionInfo[] permissionInfo = null;
+            List<Microsoft.SqlServer.Management.Smo.ServerPermissionInfo> listOfServerPermissionInfo = null;
+
             if( Globals.GenerateMockData ) {
-                Microsoft.SqlServer.Management.Smo.ServerPermissionSet[] permissionSet = { 
+                listOfServerPermissionInfo = new List<Microsoft.SqlServer.Management.Smo.ServerPermissionInfo>();
+
+                Microsoft.SqlServer.Management.Smo.ServerPermissionSet[] permissionSet = {
+                    // AlterAnyEndpoint is set to false to test when permissions are missing.
+
+                    // AlterAnyAvailabilityGroup is set to true.
                     new Microsoft.SqlServer.Management.Smo.ServerPermissionSet( true, false, false, false ),
-                    new Microsoft.SqlServer.Management.Smo.ServerPermissionSet( false, true, false, false ),
+                    // ConnectSql is set to true.
                     new Microsoft.SqlServer.Management.Smo.ServerPermissionSet( false, false, true, false ),
+                    // ViewServerState is set to true.
                     new Microsoft.SqlServer.Management.Smo.ServerPermissionSet( false, false, false, true ) };
 
                 listOfServerPermissionInfo.Add( new Microsoft.SqlServer.Management.Smo.ServerPermissionInfo( permissionSet ) );
-            } else {
-                listOfServerPermissionInfo.Add( new Microsoft.SqlServer.Management.Smo.ServerPermissionInfo() );
             }
 
-            Microsoft.SqlServer.Management.Smo.ServerPermissionInfo[] permissionInfo = listOfServerPermissionInfo.ToArray();
+            if( listOfServerPermissionInfo != null ) {
+                permissionInfo = listOfServerPermissionInfo.ToArray();
+            }
 
             return permissionInfo;
         }
 
         public void Grant( Microsoft.SqlServer.Management.Smo.ServerPermissionSet permission, string granteeName )
         {
-            if( granteeName != this.MockGranteeName ) 
+            if( granteeName != this.MockGranteeName )
             {
                 string errorMessage = "Expected to get granteeName == '" + this.MockGranteeName + "'. But got '" + granteeName + "'";
                 throw new System.ArgumentException(errorMessage, "granteeName");
@@ -219,7 +282,7 @@ namespace Microsoft.SqlServer.Management.Smo
 
         public void Revoke( Microsoft.SqlServer.Management.Smo.ServerPermissionSet permission, string granteeName )
         {
-            if( granteeName != this.MockGranteeName ) 
+            if( granteeName != this.MockGranteeName )
             {
                 string errorMessage = "Expected to get granteeName == '" + this.MockGranteeName + "'. But got '" + granteeName + "'";
                 throw new System.ArgumentException(errorMessage, "granteeName");
@@ -229,9 +292,9 @@ namespace Microsoft.SqlServer.Management.Smo
 
     // TypeName: Microsoft.SqlServer.Management.Smo.Login
     // BaseType: Microsoft.SqlServer.Management.Smo.ScriptNameObjectBase
-    // Used by: 
+    // Used by:
     //  MSFT_xSQLServerLogin
-    public class Login 
+    public class Login
     {
         private bool _mockPasswordPassed = false;
 
@@ -240,6 +303,7 @@ namespace Microsoft.SqlServer.Management.Smo
         public bool MustChangePassword = false;
         public bool PasswordPolicyEnforced = false;
         public bool PasswordExpirationEnabled = false;
+        public bool IsDisabled = false;
 
         public string MockName;
         public LoginType MockLoginType;
@@ -248,12 +312,12 @@ namespace Microsoft.SqlServer.Management.Smo
         {
             this.Name = name;
         }
-        
+
         public Login( Object server, string name )
         {
             this.Name = name;
         }
-        
+
         public void Alter()
         {
             if( !( String.IsNullOrEmpty(this.MockName) ) )
@@ -272,15 +336,15 @@ namespace Microsoft.SqlServer.Management.Smo
                 }
             }
         }
-        
+
         public void ChangePassword( SecureString secureString )
         {
             IntPtr valuePtr = IntPtr.Zero;
             try
             {
-                valuePtr = Marshal.SecureStringToGlobalAllocUnicode(secureString);            
+                valuePtr = Marshal.SecureStringToGlobalAllocUnicode(secureString);
                 if ( Marshal.PtrToStringUni(valuePtr) == "pw" )
-                {                    
+                {
                     throw new FailedOperationException (
                         "FailedOperationException",
                         new SmoException (
@@ -308,7 +372,7 @@ namespace Microsoft.SqlServer.Management.Smo
                 Marshal.ZeroFreeGlobalAllocUnicode(valuePtr);
             }
         }
-        
+
         public void Create()
         {
             if( this.LoginType == LoginType.Unknown ) {
@@ -350,7 +414,7 @@ namespace Microsoft.SqlServer.Management.Smo
             {
                 valuePtr = Marshal.SecureStringToGlobalAllocUnicode(password);
                 if ( Marshal.PtrToStringUni(valuePtr) == "pw" )
-                {                    
+                {
                     throw new FailedOperationException (
                         "FailedOperationException",
                         new SmoException (
@@ -373,9 +437,9 @@ namespace Microsoft.SqlServer.Management.Smo
                     throw new Exception ();
                 }
                 else
-                {                    
+                {
                     _mockPasswordPassed = true;
-                    
+
                     this.Create();
                 }
             }
@@ -404,28 +468,28 @@ namespace Microsoft.SqlServer.Management.Smo
             }
         }
     }
-	
+
 	// TypeName: Microsoft.SqlServer.Management.Smo.ServerRole
     // BaseType: Microsoft.SqlServer.Management.Smo.ScriptNameObjectBase
-    // Used by: 
+    // Used by:
     //  MSFT_xSQLServerRole
-    public class ServerRole 
+    public class ServerRole
     {
         public ServerRole( Server server, string name ) {
             this.Name = name;
-        } 
+        }
 
         public ServerRole( Object server, string name ) {
             this.Name = name;
-        } 
-            
+        }
+
         public string Name;
     }
 
 
 	// TypeName: Microsoft.SqlServer.Management.Smo.Database
     // BaseType: Microsoft.SqlServer.Management.Smo.ScriptNameObjectBase
-    // Used by: 
+    // Used by:
     //  MSFT_xSQLServerDatabase
     //  MSFT_xSQLServerDatabasePermission
 	public class Database
@@ -434,28 +498,28 @@ namespace Microsoft.SqlServer.Management.Smo
 
         public Database( Server server, string name ) {
             this.Name = name;
-        } 
+        }
 
         public Database( Object server, string name ) {
             this.Name = name;
-        } 
-            
+        }
+
         public string Name;
-		
+
 		public void Create()
         {
         }
-		
+
 		public void Drop()
         {
         }
-		
-        public Microsoft.SqlServer.Management.Smo.DatabasePermissionInfo[] EnumDatabasePermissions( string granteeName ) 
-        { 
+
+        public Microsoft.SqlServer.Management.Smo.DatabasePermissionInfo[] EnumDatabasePermissions( string granteeName )
+        {
             List<Microsoft.SqlServer.Management.Smo.DatabasePermissionInfo> listOfDatabasePermissionInfo = new List<Microsoft.SqlServer.Management.Smo.DatabasePermissionInfo>();
-            
+
             if( Globals.GenerateMockData ) {
-                Microsoft.SqlServer.Management.Smo.DatabasePermissionSet[] permissionSet = { 
+                Microsoft.SqlServer.Management.Smo.DatabasePermissionSet[] permissionSet = {
                     new Microsoft.SqlServer.Management.Smo.DatabasePermissionSet( true, false ),
                     new Microsoft.SqlServer.Management.Smo.DatabasePermissionSet( false, true )
                 };
@@ -472,7 +536,7 @@ namespace Microsoft.SqlServer.Management.Smo
 
         public void Grant( Microsoft.SqlServer.Management.Smo.DatabasePermissionSet permission, string granteeName )
         {
-            if( granteeName != this.MockGranteeName ) 
+            if( granteeName != this.MockGranteeName )
             {
                 string errorMessage = "Expected to get granteeName == '" + this.MockGranteeName + "'. But got '" + granteeName + "'";
                 throw new System.ArgumentException(errorMessage, "granteeName");
@@ -481,7 +545,7 @@ namespace Microsoft.SqlServer.Management.Smo
 
         public void Deny( Microsoft.SqlServer.Management.Smo.DatabasePermissionSet permission, string granteeName )
         {
-            if( granteeName != this.MockGranteeName ) 
+            if( granteeName != this.MockGranteeName )
             {
                 string errorMessage = "Expected to get granteeName == '" + this.MockGranteeName + "'. But got '" + granteeName + "'";
                 throw new System.ArgumentException(errorMessage, "granteeName");
@@ -491,14 +555,14 @@ namespace Microsoft.SqlServer.Management.Smo
 
     // TypeName: Microsoft.SqlServer.Management.Smo.User
     // BaseType: Microsoft.SqlServer.Management.Smo.ScriptNameObjectBase
-    // Used by: 
+    // Used by:
     //  xSQLServerDatabaseRole.Tests.ps1
-    public class User 
+    public class User
     {
         public User( Server server, string name )
         {
             this.Name = name;
-        } 
+        }
 
         public User( Object server, string name )
         {
@@ -518,7 +582,7 @@ namespace Microsoft.SqlServer.Management.Smo
     }
 
     // TypeName: Microsoft.SqlServer.Management.Smo.SqlServerManagementException
-    // BaseType: System.Exception 
+    // BaseType: System.Exception
     // Used by:
     //  xSqlServerLogin.Tests.ps1
     public class SqlServerManagementException : Exception
@@ -531,7 +595,7 @@ namespace Microsoft.SqlServer.Management.Smo
     }
 
     // TypeName: Microsoft.SqlServer.Management.Smo.SmoException
-    // BaseType: Microsoft.SqlServer.Management.Smo.SqlServerManagementException  
+    // BaseType: Microsoft.SqlServer.Management.Smo.SqlServerManagementException
     // Used by:
     //  xSqlServerLogin.Tests.ps1
     public class SmoException : SqlServerManagementException
@@ -539,7 +603,7 @@ namespace Microsoft.SqlServer.Management.Smo
         public SmoException () : base () {}
 
         public SmoException (string message) : base (message) {}
-        
+
         public SmoException (string message, SqlServerManagementException inner) : base (message, inner) {}
     }
 
@@ -550,9 +614,9 @@ namespace Microsoft.SqlServer.Management.Smo
     public class FailedOperationException : SmoException
     {
         public FailedOperationException () : base () {}
-        
+
         public FailedOperationException (string message) : base (message) {}
-        
+
         public FailedOperationException (string message, SmoException inner) : base (message, inner) {}
     }
 
@@ -585,7 +649,7 @@ namespace Microsoft.SqlServer.Management.Smo
             }
         }
     }
-    
+
     // TypeName: Microsoft.SqlServer.Management.Smo.AvailabilityReplica
     // BaseType: Microsoft.SqlServer.Management.Smo.NamedSmoObject
     // Used by:
@@ -605,7 +669,9 @@ namespace Microsoft.SqlServer.Management.Smo
         public string EndpointUrl;
         public string FailoverMode;
         public string Name;
-        
+        public string ReadOnlyRoutingConnectionUrl;
+        public string[] ReadOnlyRoutingList;
+
         public void Alter()
         {
             if ( this.Name == "AlterFailed" )
