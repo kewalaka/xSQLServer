@@ -22,21 +22,29 @@ function Get-TargetResource
         [System.String]
         $RSSQLInstanceName,
 
-        [parameter(Mandatory = $true)]
-        [System.Management.Automation.PSCredential]
-        $SQLAdminCredential
+        [parameter()]
+        [System.String]
+        $ReportServerVirtualDir,
+
+        [parameter()]
+        [System.String]
+        $ReportsVirtualDir,
+
+        [parameter()]
+        [System.String[]]
+        $ReportServerReservedUrl,
+
+        [parameter()]
+        [System.String[]]
+        $ReportsReservedUrl
     )
 
     if(Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\RS" -Name $InstanceName -ErrorAction SilentlyContinue)
     {
         $InstanceKey = (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\RS" -Name $InstanceName).$InstanceName
-        $SQLVersion = ((Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\$InstanceKey\Setup" -Name "Version").Version).Split(".")[0]
-        $RSConfig = Invoke-Command -ComputerName . -Credential $SQLAdminCredential -ScriptBlock {
-            $SQLVersion = $args[0]
-            $InstanceName = $args[1]
-            $RSConfig = Get-WmiObject -Class MSReportServer_ConfigurationSetting -Namespace "root\Microsoft\SQLServer\ReportServer\RS_$InstanceName\v$SQLVersion\Admin"
-            $RSConfig
-        } -ArgumentList @($SQLVersion,$InstanceName)
+        $SQLVersion = [int]((Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\$InstanceKey\Setup" -Name "Version").Version).Split(".")[0]
+
+        $RSConfig = Get-WmiObject -Class MSReportServer_ConfigurationSetting -Namespace "root\Microsoft\SQLServer\ReportServer\RS_$InstanceName\v$SQLVersion\Admin"
         if($RSConfig.DatabaseServerName.Contains("\"))
         {
             $RSSQLServer = $RSConfig.DatabaseServerName.Split("\")[0]
@@ -48,6 +56,27 @@ function Get-TargetResource
             $RSSQLInstanceName = "MSSQLSERVER"
         }
         $IsInitialized = $RSConfig.IsInitialized
+
+        if($IsInitialized)
+        {
+            # SSRS Web Portal application name changed in SQL Server 2016
+            # https://docs.microsoft.com/en-us/sql/reporting-services/breaking-changes-in-sql-server-reporting-services-in-sql-server-2016
+            $RMApplicationName = if ($SQLVersion -ge 13) { 'ReportServerWebApp' } else { 'ReportManager'}
+            
+            $ReportServerVirtualDir = $RSConfig.VirtualDirectoryReportServer
+            $ReportsVirtualDir = $RSConfig.VirtualDirectoryReportManager
+
+            $reservedUrls = $RSConfig.ListReservedUrls()
+
+            $ReportServerReservedUrl = @()
+            $ReportsReservedUrl = @()
+
+            for($i = 0; $i -lt $reservedUrls.Application.Count; ++$i)
+            {
+                if($reservedUrls.Application[$i] -eq "ReportServerWebService") { $ReportServerReservedUrl += $reservedUrls.UrlString[$i] }
+                if($reservedUrls.Application[$i] -eq "$RMApplicationName") { $ReportsReservedUrl += $reservedUrls.UrlString[$i] }
+            }
+        }
     }
     else
     {  
@@ -58,6 +87,10 @@ function Get-TargetResource
         InstanceName = $InstanceName
         RSSQLServer = $RSSQLServer
         RSSQLInstanceName = $RSSQLInstanceName
+        ReportServerVirtualDir = $ReportServerVirtualDir
+        ReportsVirtualDir = $ReportsVirtualDir
+        ReportServerReservedUrl = $ReportServerReservedUrl
+        ReportsReservedUrl = $ReportsReservedUrl
         IsInitialized = $IsInitialized
     }
 
@@ -82,57 +115,80 @@ function Set-TargetResource
         [System.String]
         $RSSQLInstanceName,
 
-        [parameter(Mandatory = $true)]
-        [System.Management.Automation.PSCredential]
-        $SQLAdminCredential
+        [parameter()]
+        [System.String]
+        $ReportServerVirtualDir,
+
+        [parameter()]
+        [System.String]
+        $ReportsVirtualDir,
+
+        [parameter()]
+        [System.String[]]
+        $ReportServerReservedUrl,
+
+        [parameter()]
+        [System.String[]]
+        $ReportsReservedUrl
     )
 
     if(Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\RS" -Name $InstanceName -ErrorAction SilentlyContinue)
     {
-        Invoke-Command -ComputerName . -Credential $SQLAdminCredential -ScriptBlock {
-            # this is a separate PS session, need to load Common Code again
-            Import-Module $using:currentPath\..\..\xSQLServerHelper.psm1 -Verbose -ErrorAction Stop
-            # smart import of the SQL module
-            Import-SQLPSModule
+        $InstanceKey = (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\RS" -Name $InstanceName).$InstanceName
+        $SQLVersion = [int]((Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\$InstanceKey\Setup" -Name "Version").Version).Split(".")[0]
+        if($InstanceName -eq "MSSQLSERVER")
+        {
+            $RSServiceName = "ReportServer"
+            if([string]::IsNullOrEmpty($ReportServerVirtualDir)) { $ReportServerVirtualDir = "ReportServer" }
+            if([string]::IsNullOrEmpty($ReportsVirtualDir)) { $ReportsVirtualDir = "Reports" }
+            $RSDatabase = "ReportServer"
+        }
+        else
+        {
+            $RSServiceName = "ReportServer`$$InstanceName"
+            if([string]::IsNullOrEmpty($ReportServerVirtualDir)) { $ReportServerVirtualDir = "ReportServer_$InstanceName" }
+            if([string]::IsNullOrEmpty($ReportsVirtualDir)) { $ReportsVirtualDir = "Reports_$InstanceName" }
+            $RSDatabase = "ReportServer`$$InstanceName"
+        }
+        if($RSSQLInstanceName -eq "MSSQLSERVER")
+        {
+            $RSConnection = "$RSSQLServer"
+        }
+        else
+        {
+            $RSConnection = "$RSSQLServer\$RSSQLInstanceName"
+        }
+        $Language = (Get-WMIObject -Class Win32_OperatingSystem -Namespace root/cimv2 -ErrorAction SilentlyContinue).OSLanguage
+        $RSConfig = Get-WmiObject -Class MSReportServer_ConfigurationSetting -Namespace "root\Microsoft\SQLServer\ReportServer\RS_$InstanceName\v$SQLVersion\Admin"
 
-            $InstanceName = $args[0]
-            $RSSQLServer = $args[1]
-            $RSSQLInstanceName = $args[2]
-            $InstanceKey = (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\RS" -Name $InstanceName).$InstanceName
-            $SQLVersion = ((Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\$InstanceKey\Setup" -Name "Version").Version).Split(".")[0]
-            if($InstanceName -eq "MSSQLSERVER")
+        # SSRS Web Portal application name changed in SQL Server 2016
+        # https://docs.microsoft.com/en-us/sql/reporting-services/breaking-changes-in-sql-server-reporting-services-in-sql-server-2016
+        $RMApplicationName = if ($SQLVersion -ge 13) { 'ReportServerWebApp' } else { 'ReportManager'}
+
+        if(!$RSConfig.IsInitialized)
+        {
+            New-VerboseMessage -Message "Initializing Reporting Services on $RSSQLServer\$RSSQLInstanceName."
+
+            if($ReportServerReservedUrl -eq $null) { $ReportServerReservedUrl = @("http://+:80") }
+            if($ReportsReservedUrl -eq $null) { $ReportsReservedUrl = @("http://+:80") }
+
+            if($RSConfig.VirtualDirectoryReportServer -ne $ReportServerVirtualDir)
             {
-                $RSServiceName = "ReportServer"
-                $RSVirtualDirectory = "ReportServer"
-                $RMVirtualDirectory = "Reports"
-                $RSDatabase = "ReportServer"
+                New-VerboseMessage -Message "Setting report server virtual directory on $RSSQLServer\$RSSQLInstanceName to $ReportServerVirtualDir."
+                $null = $RSConfig.SetVirtualDirectory("ReportServerWebService",$ReportServerVirtualDir,$Language)
+                $ReportServerReservedUrl | ForEach-Object {
+                    New-VerboseMessage -Message "Adding report server URL reservation on $RSSQLServer\$RSSQLInstanceName`: $_."
+                    $null = $RSConfig.ReserveURL("ReportServerWebService",$_,$Language)
+                }
             }
-            else
+            if($RSConfig.VirtualDirectoryReportManager -ne $ReportsVirtualDir)
             {
-                $RSServiceName = "ReportServer`$$InstanceName"
-                $RSVirtualDirectory = "ReportServer_$InstanceName"
-                $RMVirtualDirectory = "Reports_$InstanceName"
-                $RSDatabase = "ReportServer`$$InstanceName"
-            }
-            if($RSSQLInstanceName -eq "MSSQLSERVER")
-            {
-                $RSConnection = "$RSSQLServer"
-            }
-            else
-            {
-                $RSConnection = "$RSSQLServer\$RSSQLInstanceName"
-            }
-            $Language = (Get-WMIObject -Class Win32_OperatingSystem -Namespace root/cimv2 -ErrorAction SilentlyContinue).OSLanguage
-            $RSConfig = Get-WmiObject -Class MSReportServer_ConfigurationSetting -Namespace "root\Microsoft\SQLServer\ReportServer\RS_$InstanceName\v$SQLVersion\Admin"
-            if($RSConfig.VirtualDirectoryReportServer -ne $RSVirtualDirectory)
-            {
-                $null = $RSConfig.SetVirtualDirectory("ReportServerWebService",$RSVirtualDirectory,$Language)
-                $null = $RSConfig.ReserveURL("ReportServerWebService","http://+:80",$Language)
-            }
-            if($RSConfig.VirtualDirectoryReportManager -ne $RMVirtualDirectory)
-            {
-                $null = $RSConfig.SetVirtualDirectory("ReportManager",$RMVirtualDirectory,$Language)
-                $null = $RSConfig.ReserveURL("ReportManager","http://+:80",$Language)
+                New-VerboseMessage -Message "Setting reports virtual directory on $RSSQLServer\$RSSQLInstanceName to $ReportServerVirtualDir."
+                $null = $RSConfig.SetVirtualDirectory($RMApplicationName,$ReportsVirtualDir,$Language)
+                $ReportsReservedUrl | ForEach-Object {
+                    New-VerboseMessage -Message "Adding reports URL reservation on $RSSQLServer\$RSSQLInstanceName`: $_."
+                    $null = $RSConfig.ReserveURL($RMApplicationName,$_,$Language)
+                }
             }
             $RSCreateScript = $RSConfig.GenerateDatabaseCreationScript($RSDatabase,$Language,$false)
 
@@ -140,12 +196,64 @@ function Set-TargetResource
             $RSSvcAccountUsername = (Get-WmiObject -Class Win32_Service | Where-Object {$_.Name -eq $RSServiceName}).StartName
             $RSRightsScript = $RSConfig.GenerateDatabaseRightsScript($RSSvcAccountUsername,$RSDatabase,$false,$true)
 
+            # smart import of the SQL module
+            Import-SQLPSModule
             Invoke-Sqlcmd -ServerInstance $RSConnection -Query $RSCreateScript.Script
             Invoke-Sqlcmd -ServerInstance $RSConnection -Query $RSRightsScript.Script
-            $RSConfig.SetDatabaseConnection($RSConnection,$RSDatabase,2,"","")
-            $RSConfig.InitializeReportServer($RSConfig.InstallationID)
 
-        } -ArgumentList @($InstanceName,$RSSQLServer,$RSSQLInstanceName)
+            $null = $RSConfig.SetDatabaseConnection($RSConnection,$RSDatabase,2,"","")
+            $null = $RSConfig.InitializeReportServer($RSConfig.InstallationID)
+        }
+        else
+        {
+            $currentConfig = Get-TargetResource @PSBoundParameters
+
+            if(![string]::IsNullOrEmpty($ReportServerVirtualDir) -and ($ReportServerVirtualDir -ne $currentConfig.ReportServerVirtualDir))
+            {
+                New-VerboseMessage -Message "Setting report server virtual directory on $RSSQLServer\$RSSQLInstanceName to $ReportServerVirtualDir."
+
+                # to change a virtual directory, we first need to remove all URL reservations, 
+                # change the virtual directory and re-add URL reservations
+                $currentConfig.ReportServerReservedUrl | ForEach-Object { $null = $RSConfig.RemoveURL("ReportServerWebService",$_,$Language) }
+                $RSConfig.SetVirtualDirectory("ReportServerWebService",$ReportServerVirtualDir,$Language)
+                $currentConfig.ReportServerReservedUrl | ForEach-Object { $null = $RSConfig.ReserveURL("ReportServerWebService",$_,$Language) }
+            }
+            
+            if(![string]::IsNullOrEmpty($ReportsVirtualDir) -and ($ReportsVirtualDir -ne $currentConfig.ReportsVirtualDir))
+            { 
+                New-VerboseMessage -Message "Setting reports virtual directory on $RSSQLServer\$RSSQLInstanceName to $ReportServerVirtualDir."
+
+                # to change a virtual directory, we first need to remove all URL reservations, 
+                # change the virtual directory and re-add URL reservations
+                $currentConfig.ReportsReservedUrl | ForEach-Object { $null = $RSConfig.RemoveURL($RMApplicationName,$_,$Language) }
+                $RSConfig.SetVirtualDirectory($RMApplicationName,$ReportsVirtualDir,$Language)
+                $currentConfig.ReportsReservedUrl | ForEach-Object { $null = $RSConfig.ReserveURL($RMApplicationName,$_,$Language) }
+            }
+
+            if(($ReportServerReservedUrl -ne $null) -and ((Compare-Object -ReferenceObject $currentConfig.ReportServerReservedUrl -DifferenceObject $ReportServerReservedUrl) -ne $null))
+            {
+                $currentConfig.ReportServerReservedUrl | ForEach-Object {
+                    $null = $RSConfig.RemoveURL("ReportServerWebService",$_,$Language)
+                }
+
+                $ReportServerReservedUrl | ForEach-Object {
+                    New-VerboseMessage -Message "Adding report server URL reservation on $RSSQLServer\$RSSQLInstanceName`: $_."
+                    $null = $RSConfig.ReserveURL("ReportServerWebService",$_,$Language)
+                }
+            }
+
+            if(($ReportsReservedUrl -ne $null) -and ((Compare-Object -ReferenceObject $currentConfig.ReportsReservedUrl -DifferenceObject $ReportsReservedUrl) -ne $null))
+            {
+                $currentConfig.ReportsReservedUrl | ForEach-Object {
+                    $null = $RSConfig.RemoveURL($RMApplicationName,$_,$Language)
+                }
+
+                $ReportsReservedUrl | ForEach-Object {
+                    New-VerboseMessage -Message "Adding reports URL reservation on $RSSQLServer\$RSSQLInstanceName`: $_."
+                    $null = $RSConfig.ReserveURL($RMApplicationName,$_,$Language)
+                }
+            }
+        }
     }
 
     if(!(Test-TargetResource @PSBoundParameters))
@@ -173,13 +281,57 @@ function Test-TargetResource
         [System.String]
         $RSSQLInstanceName,
 
-        [parameter(Mandatory = $true)]
-        [System.Management.Automation.PSCredential]
-        $SQLAdminCredential
+        [parameter()]
+        [System.String]
+        $ReportServerVirtualDir,
+
+        [parameter()]
+        [System.String]
+        $ReportsVirtualDir,
+
+        [parameter()]
+        [System.String[]]
+        $ReportServerReservedUrl,
+
+        [parameter()]
+        [System.String[]]
+        $ReportsReservedUrl
     )
 
-    $result = (Get-TargetResource @PSBoundParameters).IsInitialized
+    $result = $true
+
+    $currentConfig = Get-TargetResource @PSBoundParameters
     
+    if(!$currentConfig.IsInitialized)
+    { 
+        New-VerboseMessage -Message "Reporting services $RSSQLServer\$RSSQLInstanceName are not initialized."
+        $result = $false 
+    }
+
+    if(![string]::IsNullOrEmpty($ReportServerVirtualDir) -and ($ReportServerVirtualDir -ne $currentConfig.ReportServerVirtualDir)) 
+    { 
+        New-VerboseMessage -Message "Report server virtual directory on $RSSQLServer\$RSSQLInstanceName is $($currentConfig.ReportServerVirtualDir), should be $ReportServerVirtualDir."
+        $result = $false 
+    }
+
+    if(![string]::IsNullOrEmpty($ReportsVirtualDir) -and ($ReportsVirtualDir -ne $currentConfig.ReportsVirtualDir))
+    { 
+        New-VerboseMessage -Message "Reports virtual directory on $RSSQLServer\$RSSQLInstanceName is $($currentConfig.ReportsVirtualDir), should be $ReportsVirtualDir."
+        $result = $false 
+    }
+
+    if(($ReportServerReservedUrl -ne $null) -and ((Compare-Object -ReferenceObject $currentConfig.ReportServerReservedUrl -DifferenceObject $ReportServerReservedUrl) -ne $null)) 
+    { 
+        New-VerboseMessage -Message "Report server reserved URLs on $RSSQLServer\$RSSQLInstanceName are $($currentConfig.ReportServerReservedUrl -join ', '), should be $($ReportServerReservedUrl -join ', ')."
+        $result = $false 
+    }
+
+    if(($ReportsReservedUrl -ne $null) -and ((Compare-Object -ReferenceObject $currentConfig.ReportsReservedUrl -DifferenceObject $ReportsReservedUrl) -ne $null))
+    { 
+        New-VerboseMessage -Message "Reports reserved URLs on $RSSQLServer\$RSSQLInstanceName are $($currentConfig.ReportsReservedUrl -join ', ')), should be $($ReportsReservedUrl -join ', ')."
+        $result = $false 
+    }
+
     $result
 }
 
